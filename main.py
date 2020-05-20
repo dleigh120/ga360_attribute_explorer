@@ -58,8 +58,6 @@ features = [
   ("Geo", "City","sessions.geoNetwork.city")
   ]
 
-# Page views, session duration,  New / returning user, socially-engaged? 
-
 #render start query
 def create_clause(dc):
   fq = '''CREATE TABLE `{billing_project_id}.{billing_dataset_name}.{output_table}` AS
@@ -103,7 +101,7 @@ def feature_subquery(dc):
   
   return fq
 
-#render final query 
+#generate final query 
 def final_query(dc, features):
     fq = create_clause(dc)
     for i in features: 
@@ -119,3 +117,9 @@ def final_query(dc, features):
     return fq
 
 query = final_query(dc, features)
+
+# Run final query
+#BQ API Client/cursor
+client = bigquery.Client(project = dc['billing_project_id'])
+query_job = client.query(query) 
+#result = query_job.result()  # Waits for query to finish
