@@ -1,3 +1,4 @@
+# Dependencies; intended for notebook run (Colab, Jupyter, Datalab etc.)
 from google.colab import auth
 import pandas as pd
 import numpy as np
@@ -7,21 +8,19 @@ from google.cloud import bigquery
 
 # Authenticate user
 auth.authenticate_user()
-# View plots
-%matplotlib inline
 
-#variable dictionary
+# Input dictionary
 dc = {}
-dc['project_id'] = XXXXXXXX
-dc['dataset_name'] = XXXXXXXX
+dc['project_id'] = XXXXXX
+dc['dataset_name'] = XXXXXX
 dc['table_name'] = 'ga_sessions_*'
-dc['start_date'] = '20180101' 
-dc['end_date'] = '20200101' 
-dc['output_table'] = 'attribute_explorer'
-dc['billing_project_id'] = XXXXXXXX
-dc['billing_dataset_name'] = XXXXXXXX
+dc['start_date'] = '20200101' #yyyyMMdd
+dc['end_date'] = '20210101' #yyyyMMdd
+dc['output_table'] = 'ga360_attribute_explorer'
+dc['billing_project_id'] = XXXXXX
+dc['billing_dataset_name'] = XXXXXX
 
-#feature/attribute tuple list
+# Category/feature tuple list
 features = [
   # time-based
   ("Time/Date", "Hour of Day","CAST(EXTRACT(HOUR FROM TIMESTAMP_SECONDS(sessions.visitStartTime) AT TIME ZONE 'Asia/Hong_Kong') as STRING)"),
@@ -58,15 +57,12 @@ features = [
   ("Geo", "City","sessions.geoNetwork.city")
   ]
 
-#render start query
-def create_clause(dc):
-  fq = '''CREATE TABLE `{billing_project_id}.{billing_dataset_name}.{output_table}` AS
-       '''.format(**dc)
-  return fq
+# Query segments
+create_clause = '''
+    CREATE TABLE `{billing_project_id}.{billing_dataset_name}.{output_table}` AS
+    '''
 
-#render subquery
-def feature_subquery(dc):
-  fq = '''
+subquery_clause = '''
   SELECT
     category, 
     feature,
@@ -97,29 +93,42 @@ def feature_subquery(dc):
       AND date <= '{end_date}'
     GROUP BY
       1,2,3 )
-    '''.format(**dc)
+      '''
+
+union_clause = '''
+  UNION ALL  
+  '''
+
+end_clause = '''
+  ORDER BY (conversion_rate - ((SUM(conversions) OVER()/SUM(sessions) OVER())*100) ) / ((SUM(conversions) OVER()/SUM(sessions) OVER())*100) DESC  
+  '''       
+
+select_clause = '''
+  SELECT * FROM `{billing_project_id}.{billing_dataset_name}.{output_table}`
+  '''  
+
+# Build final query
+query = create_clause.format(**dc)
+    
+for i in features: 
+  dc['category'] = i[0]
+  dc['feature'] = i[1]
+  dc['attribute'] = i[2]    
+  if (features.index(i) + 1) < len(features):
+    sep = union_clause
+  else: 
+    sep = end_clause    
+  query = query + subquery_clause.format(**dc) + sep      
   
-  return fq
-
-#generate final query 
-def final_query(dc, features):
-    fq = create_clause(dc)
-    for i in features: 
-      dc['category'] = i[0]
-      dc['feature'] = i[1]
-      dc['attribute'] = i[2]
-      if (features.index(i) + 1) < len(features):
-        union_val = '''UNION ALL'''
-      else: 
-        union_val = '''ORDER BY (conversion_rate - ((SUM(conversions) OVER()/SUM(sessions) OVER())*100) ) / ((SUM(conversions) OVER()/SUM(sessions) OVER())*100) DESC  '''       
-      fq = fq + feature_subquery(dc) + union_val
-      
-    return fq
-
-query = final_query(dc, features)
-
-# Run final query
-#BQ API Client/cursor
+# Execute query
 client = bigquery.Client(project = dc['billing_project_id'])
 query_job = client.query(query) 
-#result = query_job.result()  # Waits for query to finish
+print(query_job)
+
+# Return CSV and pandas data-frame
+try: 
+  df = pd.io.gbq.read_gbq(select_clause.format(**dc), project_id=dc['billing_project_id'], verbose=False, dialect='standard')
+  df.to_csv(str(dc['output_table']) + '.csv')  
+  print("Data exported/saved locally as CSV and as data-frame: 'df'")
+except: 
+  print("Export failed")
