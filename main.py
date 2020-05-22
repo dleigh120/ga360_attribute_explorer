@@ -129,6 +129,6 @@ print(query_job)
 try: 
   df = pd.io.gbq.read_gbq(select_clause.format(**dc), project_id=dc['billing_project_id'], verbose=False, dialect='standard')
   df.to_csv(str(dc['output_table']) + '.csv')  
-  print("Data exported/saved locally as CSV and as data-frame: 'df'")
+  print("Data saved as BigQuery table and exported/saved locally as CSV and Pandas data-frame: 'df'")
 except: 
   print("Export failed")
